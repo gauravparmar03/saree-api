@@ -133,11 +133,11 @@ async def generate_saree(
         parts.append({"text": prompt})
 
         # Call Gemini image generation model
-        model = genai.GenerativeModel("gemini-2.0-flash-exp-image-generation")
+        model = genai.GenerativeModel("gemini-2.0-flash-preview-image-generation")
         response = model.generate_content(
             parts,
             generation_config=genai.GenerationConfig(
-                response_modalities=["image", "text"],
+                response_modalities=["TEXT", "IMAGE"],
             )
         )
 
