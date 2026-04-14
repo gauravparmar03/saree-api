@@ -46,10 +46,11 @@ PHOTOGRAPHY:
 - Sharp focus on fabric and draping
 - Ultra-realistic quality"""
 
+# Confirmed available from /list-models
 MODELS_TO_TRY = [
-    "gemini-2.5-flash-image-preview",
-    "gemini-3.1-flash-image-preview",
-    "gemini-2.5-flash-preview-04-17",
+    "models/gemini-2.5-flash-image",
+    "models/gemini-3.1-flash-image-preview",
+    "models/gemini-3-pro-image-preview",
 ]
 
 
@@ -132,7 +133,7 @@ async def generate_saree(
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": "All models failed. Check /list-models to see available models.",
+                    "error": "All models failed",
                     "last_error": last_error,
                     "models_tried": MODELS_TO_TRY
                 }
