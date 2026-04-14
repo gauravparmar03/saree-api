@@ -5,7 +5,8 @@ from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -19,9 +20,9 @@ app.add_middleware(
 )
 
 GEMINI_API_KEY = os.getenv("API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-DEFAULT_PROMPT = """Create a highly realistic, full-body fashion image of a saree. 
+DEFAULT_PROMPT = """Create a highly realistic, full-body fashion image of a saree.
 
 MODEL STYLING:
 - elegant Indian woman
@@ -36,6 +37,11 @@ SAREE DRAPING:
 - visible border and tassels
 - realistic fabric physics and folds
 
+COLORS AND FABRIC:
+- rich silk saree with golden zari border
+- deep red or maroon base color
+- intricate traditional motifs
+
 OUTPUT:
 - Single composite image with 3 angles: front, 45-degree side, back
 - Full body visible in all views
@@ -46,7 +52,7 @@ PHOTOGRAPHY:
 - Studio lighting with soft shadows
 - Neutral beige background
 - Sharp focus on fabric and draping
-- Ultra-realistic 4K quality"""
+- Ultra-realistic quality"""
 
 
 @app.get("/")
@@ -65,23 +71,25 @@ async def generate_saree(
     drape_style: str = Form("Bengali"),
 ):
     try:
-        final_prompt = prompt if (prompt and prompt.strip()) else DEFAULT_PROMPT
+        # Use custom or default prompt
+        final_prompt = prompt.strip() if (prompt and prompt.strip()) else DEFAULT_PROMPT
+
+        # Inject drape style
         final_prompt = final_prompt.replace("Bengali drape style", f"{drape_style} drape style")
         final_prompt = final_prompt.replace("Bengali saree drape (default)", f"{drape_style} saree drape")
 
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash-preview-image-generation")
-
-        response = model.generate_content(
-            final_prompt,
-            generation_config=genai.GenerationConfig(
-                response_modalities=["TEXT", "IMAGE"]
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=final_prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["Text", "Image"]
             )
         )
 
         if not response.candidates:
             return JSONResponse(
                 status_code=500,
-                content={"error": "No candidates returned by Gemini", "raw": str(response)}
+                content={"error": "No candidates returned by Gemini"}
             )
 
         candidate = response.candidates[0]
@@ -89,13 +97,13 @@ async def generate_saree(
         text_response = ""
 
         for part in candidate.content.parts:
-            if hasattr(part, "inline_data") and part.inline_data is not None:
+            if part.inline_data is not None:
                 data = part.inline_data.data
                 if isinstance(data, bytes):
                     generated_image_b64 = base64.b64encode(data).decode("utf-8")
                 elif isinstance(data, str):
                     generated_image_b64 = data
-            elif hasattr(part, "text") and part.text:
+            elif part.text:
                 text_response += part.text
 
         if not generated_image_b64:
