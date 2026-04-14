@@ -46,23 +46,47 @@ PHOTOGRAPHY:
 - Sharp focus on fabric and draping
 - Ultra-realistic quality"""
 
+# Try these models in order until one works
+MODELS_TO_TRY = [
+    "gemini-2.0-flash-preview-image-generation",
+    "gemini-2.0-flash-exp-image-generation",
+    "imagen-3.0-generate-002",
+]
+
 
 @app.get("/")
 def root():
-    # List ALL environment variables to debug what Render is passing
-    all_env_keys = list(os.environ.keys())
     api_key = os.environ.get("GEMINI_API_KEY", "")
     return {
         "status": "Saree AI API is running",
         "gemini_key_set": bool(api_key),
         "key_length": len(api_key),
-        "all_env_keys": all_env_keys  # this shows us what vars Render actually set
     }
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/list-models")
+def list_models():
+    """Lists available models from Gemini — use this to find the correct model name"""
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        from google import genai
+        gemini_client = genai.Client(api_key=api_key)
+        models = gemini_client.models.list()
+        image_models = []
+        all_models = []
+        for m in models:
+            all_models.append(m.name)
+            name_lower = m.name.lower()
+            if any(x in name_lower for x in ["image", "flash", "imagen"]):
+                image_models.append(m.name)
+        return {"image_related_models": image_models, "all_models": all_models}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/generate-saree")
@@ -75,10 +99,7 @@ async def generate_saree(
         if not api_key:
             return JSONResponse(
                 status_code=500,
-                content={
-                    "error": "GEMINI_API_KEY is not set.",
-                    "all_env_keys": list(os.environ.keys())
-                }
+                content={"error": "GEMINI_API_KEY is not set."}
             )
 
         from google import genai
@@ -90,18 +111,41 @@ async def generate_saree(
         final_prompt = final_prompt.replace("Bengali drape style", f"{drape_style} drape style")
         final_prompt = final_prompt.replace("Bengali saree drape (default)", f"{drape_style} saree drape")
 
-        response = gemini_client.models.generate_content(
-            model="gemini-2.0-flash-exp",
-            contents=final_prompt,
-            config=types.GenerateContentConfig(
-                response_modalities=["Text", "Image"]
+        # Try each model until one works
+        last_error = None
+        response = None
+        working_model = None
+
+        for model_name in MODELS_TO_TRY:
+            try:
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=final_prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["Text", "Image"]
+                    )
+                )
+                working_model = model_name
+                break
+            except Exception as model_err:
+                last_error = str(model_err)
+                print(f"Model {model_name} failed: {model_err}")
+                continue
+
+        if response is None:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "All models failed",
+                    "last_error": last_error,
+                    "models_tried": MODELS_TO_TRY
+                }
             )
-        )
 
         if not response.candidates:
             return JSONResponse(
                 status_code=500,
-                content={"error": "No candidates returned by Gemini"}
+                content={"error": "No candidates returned", "model_used": working_model}
             )
 
         candidate = response.candidates[0]
@@ -124,7 +168,8 @@ async def generate_saree(
                 content={
                     "error": "Gemini did not return an image",
                     "text_response": text_response,
-                    "finish_reason": str(getattr(candidate, "finish_reason", "unknown"))
+                    "finish_reason": str(getattr(candidate, "finish_reason", "unknown")),
+                    "model_used": working_model
                 }
             )
 
@@ -132,7 +177,8 @@ async def generate_saree(
             "success": True,
             "image_base64": generated_image_b64,
             "mime_type": "image/png",
-            "message": text_response
+            "message": text_response,
+            "model_used": working_model
         })
 
     except Exception as e:
