@@ -4,11 +4,6 @@ import traceback
 from fastapi import FastAPI, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-
-load_dotenv()
 
 app = FastAPI(title="Saree AI API")
 
@@ -18,9 +13,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-GEMINI_API_KEY = os.getenv("API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 DEFAULT_PROMPT = """Create a highly realistic, full-body fashion image of a saree.
 
@@ -57,7 +49,8 @@ PHOTOGRAPHY:
 
 @app.get("/")
 def root():
-    return {"status": "Saree AI API is running", "gemini_key_set": bool(GEMINI_API_KEY)}
+    api_key = os.environ.get("API_KEY")
+    return {"status": "Saree AI API is running", "gemini_key_set": bool(api_key)}
 
 
 @app.get("/health")
@@ -71,14 +64,26 @@ async def generate_saree(
     drape_style: str = Form("Bengali"),
 ):
     try:
-        # Use custom or default prompt
-        final_prompt = prompt.strip() if (prompt and prompt.strip()) else DEFAULT_PROMPT
+        # Read API key fresh on every request (works on Render)
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "GEMINI_API_KEY is not set in environment variables"}
+            )
 
-        # Inject drape style
+        # Import here so client is created with fresh key
+        from google import genai
+        from google.genai import types
+
+        gemini_client = genai.Client(api_key=api_key)
+
+        # Build prompt
+        final_prompt = prompt.strip() if (prompt and prompt.strip()) else DEFAULT_PROMPT
         final_prompt = final_prompt.replace("Bengali drape style", f"{drape_style} drape style")
         final_prompt = final_prompt.replace("Bengali saree drape (default)", f"{drape_style} saree drape")
 
-        response = client.models.generate_content(
+        response = gemini_client.models.generate_content(
             model="gemini-2.0-flash-exp",
             contents=final_prompt,
             config=types.GenerateContentConfig(
