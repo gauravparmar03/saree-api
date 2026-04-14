@@ -46,11 +46,10 @@ PHOTOGRAPHY:
 - Sharp focus on fabric and draping
 - Ultra-realistic quality"""
 
-# Try these models in order until one works
 MODELS_TO_TRY = [
-    "gemini-2.0-flash-preview-image-generation",
-    "gemini-2.0-flash-exp-image-generation",
-    "imagen-3.0-generate-002",
+    "gemini-2.5-flash-image-preview",
+    "gemini-3.1-flash-image-preview",
+    "gemini-2.5-flash-preview-04-17",
 ]
 
 
@@ -71,22 +70,18 @@ def health():
 
 @app.get("/list-models")
 def list_models():
-    """Lists available models from Gemini — use this to find the correct model name"""
     try:
         api_key = os.environ.get("GEMINI_API_KEY", "")
         from google import genai
         gemini_client = genai.Client(api_key=api_key)
         models = gemini_client.models.list()
-        image_models = []
-        all_models = []
-        for m in models:
-            all_models.append(m.name)
-            name_lower = m.name.lower()
-            if any(x in name_lower for x in ["image", "flash", "imagen"]):
-                image_models.append(m.name)
+        all_models = [m.name for m in models]
+        image_models = [m for m in all_models if any(
+            x in m.lower() for x in ["image", "flash", "imagen", "pro"]
+        )]
         return {"image_related_models": image_models, "all_models": all_models}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 
 @app.post("/generate-saree")
@@ -111,13 +106,13 @@ async def generate_saree(
         final_prompt = final_prompt.replace("Bengali drape style", f"{drape_style} drape style")
         final_prompt = final_prompt.replace("Bengali saree drape (default)", f"{drape_style} saree drape")
 
-        # Try each model until one works
         last_error = None
         response = None
         working_model = None
 
         for model_name in MODELS_TO_TRY:
             try:
+                print(f"Trying model: {model_name}")
                 response = gemini_client.models.generate_content(
                     model=model_name,
                     contents=final_prompt,
@@ -126,6 +121,7 @@ async def generate_saree(
                     )
                 )
                 working_model = model_name
+                print(f"Success with model: {model_name}")
                 break
             except Exception as model_err:
                 last_error = str(model_err)
@@ -136,7 +132,7 @@ async def generate_saree(
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": "All models failed",
+                    "error": "All models failed. Check /list-models to see available models.",
                     "last_error": last_error,
                     "models_tried": MODELS_TO_TRY
                 }
