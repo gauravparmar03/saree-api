@@ -49,8 +49,15 @@ PHOTOGRAPHY:
 
 @app.get("/")
 def root():
-    api_key = os.environ.get("API_KEY")
-    return {"status": "Saree AI API is running", "gemini_key_set": bool(api_key)}
+    # List ALL environment variables to debug what Render is passing
+    all_env_keys = list(os.environ.keys())
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    return {
+        "status": "Saree AI API is running",
+        "gemini_key_set": bool(api_key),
+        "key_length": len(api_key),
+        "all_env_keys": all_env_keys  # this shows us what vars Render actually set
+    }
 
 
 @app.get("/health")
@@ -64,21 +71,21 @@ async def generate_saree(
     drape_style: str = Form("Bengali"),
 ):
     try:
-        # Read API key fresh on every request (works on Render)
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = os.environ.get("GEMINI_API_KEY", "")
         if not api_key:
             return JSONResponse(
                 status_code=500,
-                content={"error": "GEMINI_API_KEY is not set in environment variables"}
+                content={
+                    "error": "GEMINI_API_KEY is not set.",
+                    "all_env_keys": list(os.environ.keys())
+                }
             )
 
-        # Import here so client is created with fresh key
         from google import genai
         from google.genai import types
 
         gemini_client = genai.Client(api_key=api_key)
 
-        # Build prompt
         final_prompt = prompt.strip() if (prompt and prompt.strip()) else DEFAULT_PROMPT
         final_prompt = final_prompt.replace("Bengali drape style", f"{drape_style} drape style")
         final_prompt = final_prompt.replace("Bengali saree drape (default)", f"{drape_style} saree drape")
